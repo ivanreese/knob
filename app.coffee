@@ -2,55 +2,43 @@ TAU = 2*Math.PI
 DEG = 180/Math.PI
 RAD = Math.PI/180
 
-Array.prototype.sum = ()->
-	return 0 unless this.length > 0
-	this.reduce (a,b)->
-		a+b
+Array.prototype.sum = ()-> if this.length is 0 then 0 else this.reduce (a, b)-> a+b
+Array.prototype.average = ()-> if this.length is 0 then 0 else this.sum() / this.length
 
-Array.prototype.average = ()->
-	return 0 unless this.length > 0
-	total = this.reduce (a,b)->
-		a+b
-	total/this.length
-
-Array.prototype.mapPairs = (call)->
+# Map an array with a function that takes each element and the following
+Array.prototype.mapPairs = (cb)->
 	return [] unless this.length > 1
 	values = []
-	this.reduce (a,b)->
-		values.push(call(a,b))
+	this.reduce (a, b)->
+		values.push cb a, b
 		b
 	values
 
 @Angle =
-	wrap: (ang, bias)->
-		while bias - ang > +Math.PI then ang += TAU
-		while bias - ang < -Math.PI then ang -= TAU
-		ang
+	wrap: (angle, bias)->
+		while bias - angle > +Math.PI then angle += TAU
+		while bias - angle < -Math.PI then angle -= TAU
+		angle
 
 @Vec =
-	diff: (a,b)->
+	diff: (a, b)->
 		x: b.x - a.x
 		y: b.y - a.y
 
 	angle: (a, b)->
-		p = Vec.diff(a,b)
-		Math.atan2(p.y, p.x)
+		p = Vec.diff a, b
+		Math.atan2 p.y, p.x
 
-	distance: (a,b)->
-		p = Vec.diff(a,b)
-		Math.sqrt(p.x*p.x + p.y*p.y)
-
-	pathLength: (arr)->
-		arr.mapPairs(Vec.distance).sum()
+	hypot: ({x, y})-> Math.hypot x, y
+	distance: (a, b)-> Vec.hypot Vec.diff a, b
+	pathLength: (arr)-> arr.mapPairs(Vec.distance).sum()
 
 	lerp: (a, b, t)->
-		d = Math.max(0, Math.min(1, t))
-		{
-			x: a.x*(1-d) + b.x*d
-			y: a.y*(1-d) + b.y*d
-		}
+		t = Math.max 0, Math.min 1, t
+		x: a.x * (1-t) + b.x * t
+		y: a.y * (1-t) + b.y * t
 
-newPoint = ()-> {x: 0, y: 0, a: 0}
+newPoint = ()-> x: 0, y: 0, a: 0
 
 start = 				newPoint()
 last = 					newPoint()
@@ -67,7 +55,7 @@ delta = 				newPoint()
 
 centerTransitionTime = 100
 recentAngleBasis = 0
-recent = [{x:0,y:0}]
+recent = [{x:0, y:0}]
 # recent = [{x:282,y:204},{x:282,y:205},{x:283,y:205},{x:284,y:206},{x:285,y:207},{x:287,y:208},{x:288,y:209},{x:289,y:209},{x:289,y:210},{x:291,y:210},{x:291,y:211},{x:292,y:212},{x:293,y:213},{x:295,y:214},{x:295,y:216},{x:296,y:216},{x:298,y:218},{x:299,y:219},{x:300,y:220},{x:302,y:221},{x:303,y:222},{x:305,y:222},{x:305,y:224},{x:308,y:225},{x:310,y:226},{x:311,y:229},{x:313,y:230},{x:316,y:231},{x:317,y:233},{x:320,y:236},{x:323,y:237},{x:325,y:239},{x:328,y:242},{x:331,y:242},{x:331,y:244},{x:334,y:244},{x:334,y:245},{x:335,y:246},{x:336,y:247},{x:337,y:247},{x:339,y:249},{x:341,y:250},{x:343,y:251},{x:346,y:251},{x:348,y:252},{x:348,y:253},{x:348,y:254},{x:350,y:254},{x:351,y:254},{x:351,y:256},{x:353,y:256}]
 dragging = false
 computedValue = 0
@@ -85,21 +73,22 @@ canvas = null
 g = null
 
 # BEGIN
-$ ()->
-	canvas = document.getElementById("canvas")
-	g = canvas.getContext("2d")
+requestAnimationFrame ()->
+	canvas = document.querySelector "canvas"
+	g = canvas.getContext "2d"
 	resize()
-
 
 # RESIZE
 resize = ()->
-	canvas.width = $(window).width()   # * window.devicePixelRatio
-	canvas.height = $(window).height() # * window.devicePixelRatio
+	dpr = window.devicePixelRatio
+	canvas.width = window.innerWidth   * dpr
+	canvas.height = window.innerHeight * dpr
+	g.scale dpr, dpr
 	center =
-		x:canvas.width/2
-		y:canvas.height/2
+		x:window.innerWidth/2
+		y:window.innerHeight/2
 	draw()
-$(window).on "resize", resize
+window.onresize = resize
 
 # LOGIC
 update = (p)->
@@ -109,8 +98,8 @@ update = (p)->
 	recent.unshift(current)
 	recent.pop() while Vec.pathLength(recent) > 2*TAU * Vec.distance(activeCenter, current) and recent.length > 2
 
-	recentMin = recent.reduce (a,b)-> { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) }
-	recentMax = recent.reduce (a,b)-> { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) }
+	recentMin = recent.reduce (a, b)-> { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) }
+	recentMax = recent.reduce (a, b)-> { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) }
 	recentSize = Vec.diff(recentMin, recentMax)
 	recentCenter =
 		x: (recentMin.x + recentMax.x)/2
@@ -159,7 +148,7 @@ computedValueIncrement = ()->
 
 # EVENTS
 
-$(window).mousedown (e)->
+window.onmousedown = (e)->
 	dragging = true
 	time = 0
 	recent = []
@@ -167,10 +156,10 @@ $(window).mousedown (e)->
 	activeCenter = center
 	start = last = computePosition(e.pageX, e.pageY)
 
-$(window).mouseup (e)->
+window.onmouseup = (e)->
 	dragging = false
 
-$(window).mousemove (e)->
+window.onmousemove = (e)->
 	if dragging
 		update(computePosition(e.pageX, e.pageY))
 
@@ -276,8 +265,8 @@ draw = ()->
 	drawRecent()
 	drawRecentBounds()
 
-	# hudValue(computedValue, "Computed Value")
-	# hudValue(squareness, "Squareness")
-	# hudPoint(accumulated, "Accumulated", DEG)
-	# hudPoint(usage, "Usage")
-	# hudPoint(delta, "Delta", DEG)
+	hudValue(computedValue, "Computed Value")
+	hudValue(squareness, "Squareness")
+	hudPoint(accumulated, "Accumulated", DEG)
+	hudPoint(usage, "Usage")
+	hudPoint(delta, "Delta", DEG)
