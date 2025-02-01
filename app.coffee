@@ -1,94 +1,38 @@
-TAU = 2*Math.PI
-DEG = 180/Math.PI
-RAD = Math.PI/180
+TAU = Math.PI * 2
 
-Array.prototype.sum = ()-> if this.length is 0 then 0 else this.reduce (a, b)-> a+b
-Array.prototype.average = ()-> if this.length is 0 then 0 else this.sum() / this.length
+sum = (arr)-> if arr.length is 0 then 0 else arr.reduce (a, b)-> a+b
+average = (arr)-> if arr.length is 0 then 0 else sum(arr) / arr.length
+mapPairs = (arr, cb) -> arr.slice(1).map (v, i) -> cb arr[i], v
 
-# Map an array with a function that takes each element and the following
-Array.prototype.mapPairs = (cb)->
-	return [] unless this.length > 1
-	values = []
-	this.reduce (a, b)->
-		values.push cb a, b
-		b
-	values
+wrapAngle = (angle) -> (((angle + Math.PI) % TAU) + TAU) % TAU - Math.PI
 
-@Angle =
-	wrap: (angle, bias)->
-		while bias - angle > +Math.PI then angle += TAU
-		while bias - angle < -Math.PI then angle -= TAU
-		angle
-
-@Vec =
-	diff: (a, b)->
-		x: b.x - a.x
-		y: b.y - a.y
-
+Vec =
+	diff: (a, b)-> x: b.x - a.x, y: b.y - a.y
 	angle: (a, b)->
 		p = Vec.diff a, b
 		Math.atan2 p.y, p.x
-
 	hypot: ({x, y})-> Math.hypot x, y
 	distance: (a, b)-> Vec.hypot Vec.diff a, b
-	pathLength: (arr)-> arr.mapPairs(Vec.distance).sum()
-
+	pathLength: (arr)-> sum mapPairs arr, Vec.distance
 	lerp: (a, b, t)->
 		t = Math.max 0, Math.min 1, t
 		x: a.x * (1-t) + b.x * t
 		y: a.y * (1-t) + b.y * t
 
-newPoint = ()-> x: 0, y: 0, a: 0
+newPoint = (x = 0, y = 0, a = 0)-> { x, y, a }
 
-start = 				newPoint()
 last = 					newPoint()
 current = 			newPoint()
 center = 				newPoint()
-recentCenter = 	newPoint()
-accumulated = 	newPoint()
-recentMin = 		newPoint()
-recentMax =			newPoint()
 recentSize = 		newPoint()
 activeCenter = 	newPoint()
 usage = 				newPoint()
-delta = 				newPoint()
 
 centerTransitionTime = 100
-recentAngleBasis = 0
 recent = [{x:0, y:0}]
-# recent = [{x:282,y:204},{x:282,y:205},{x:283,y:205},{x:284,y:206},{x:285,y:207},{x:287,y:208},{x:288,y:209},{x:289,y:209},{x:289,y:210},{x:291,y:210},{x:291,y:211},{x:292,y:212},{x:293,y:213},{x:295,y:214},{x:295,y:216},{x:296,y:216},{x:298,y:218},{x:299,y:219},{x:300,y:220},{x:302,y:221},{x:303,y:222},{x:305,y:222},{x:305,y:224},{x:308,y:225},{x:310,y:226},{x:311,y:229},{x:313,y:230},{x:316,y:231},{x:317,y:233},{x:320,y:236},{x:323,y:237},{x:325,y:239},{x:328,y:242},{x:331,y:242},{x:331,y:244},{x:334,y:244},{x:334,y:245},{x:335,y:246},{x:336,y:247},{x:337,y:247},{x:339,y:249},{x:341,y:250},{x:343,y:251},{x:346,y:251},{x:348,y:252},{x:348,y:253},{x:348,y:254},{x:350,y:254},{x:351,y:254},{x:351,y:256},{x:353,y:256}]
-dragging = false
 computedValue = 0
 squareness = 0
 time = 0
-hud =
-	left: 30
-	labelLeft: 60
-	top: 40
-	space: 50
-	pos: 0
-	nextPos: ()-> hud.pos++
-	resetPos: ()-> hud.pos = 0
-canvas = null
-g = null
-
-# BEGIN
-requestAnimationFrame ()->
-	canvas = document.querySelector "canvas"
-	g = canvas.getContext "2d"
-	resize()
-
-# RESIZE
-resize = ()->
-	dpr = window.devicePixelRatio
-	canvas.width = window.innerWidth   * dpr
-	canvas.height = window.innerHeight * dpr
-	g.scale dpr, dpr
-	center =
-		x:window.innerWidth/2
-		y:window.innerHeight/2
-	draw()
-window.onresize = resize
 
 # LOGIC
 update = (p)->
@@ -96,7 +40,11 @@ update = (p)->
 	current = p
 
 	recent.unshift(current)
-	recent.pop() while Vec.pathLength(recent) > 2*TAU * Vec.distance(activeCenter, current) and recent.length > 2
+
+	# we want roughly 2 full loops around the mouse
+	radius = Vec.distance(activeCenter, current)
+	desiredLength = TAU * radius * 2
+	recent.pop() while Vec.pathLength(recent) > desiredLength and recent.length > 2
 
 	recentMin = recent.reduce (a, b)-> { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) }
 	recentMax = recent.reduce (a, b)-> { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) }
@@ -106,20 +54,11 @@ update = (p)->
 		y: (recentMin.y + recentMax.y)/2
 
 	time++
-	activeCenter = Vec.lerp(center, recentCenter, time/centerTransitionTime)
-
-	delta =
-		x: (current.x - start.x)
-		y: (current.y - start.y)
-		a: angleToActiveCenter(current)
-
-	accumulated.x += current.x - last.x
-	accumulated.y += current.y - last.y
-	accumulated.a += Angle.wrap(current.a - last.a, 0)
+	activeCenter = Vec.lerp center, recentCenter, time / centerTransitionTime
 
 	computedValue += computedValueIncrement()
 
-	squareness = computeSquareness(recentSize)
+	squareness = 1 - Math.abs Math.log recentSize.x / recentSize.y
 
 	last = current
 
@@ -137,7 +76,7 @@ computedValueIncrement = ()->
 
 	if useAngularInput
 		usage.a++
-		Angle.wrap(current.a - last.a, 0) / TAU
+		wrapAngle(current.a - last.a) / TAU
 	else if recentSize.x > recentSize.y
 		usage.x++
 		(current.x - last.x) / (TAU * 20)
@@ -145,46 +84,25 @@ computedValueIncrement = ()->
 		usage.y++
 		-(current.y - last.y) / (TAU * 20)
 
-
-# EVENTS
-
-window.onmousedown = (e)->
-	dragging = true
-	time = 0
-	recent = []
-	usage = newPoint()
-	activeCenter = center
-	start = last = computePosition(e.pageX, e.pageY)
-
-window.onmouseup = (e)->
-	dragging = false
-
-window.onmousemove = (e)->
-	if dragging
-		update(computePosition(e.pageX, e.pageY))
-
-
-# MMMMMMMATH
-
-angleToActiveCenter = (p)->
-	d = Vec.diff(activeCenter, p)
-	Math.atan2(d.y, d.x)
-
-computePosition = (x, y)->
-	p = {x:x, y:y}
-	p.a = angleToActiveCenter(p)
-	p
-
-computeSquareness = (vec)->
-	1-Math.abs(Math.log(vec.x/vec.y))
-
-
 # DRAWING
-prepareToDraw = ()->
-	hud.resetPos()
+
+canvas = document.querySelector "canvas"
+g = canvas.getContext "2d"
+
+resize = ()->
+	dpr = window.devicePixelRatio
+	canvas.width = window.innerWidth   * dpr
+	canvas.height = window.innerHeight * dpr
+	g.scale dpr, dpr
+	center =
+		x:window.innerWidth/2
+		y:window.innerHeight/2
+	draw()
+
+draw = ()->
 	g.clearRect(0,0,canvas.width,canvas.height)
-	g.font = "20px sans-serif"
-	g.beginPath()
+	drawPoint(center, "#fff")
+	drawComputedValue()
 
 drawPoint = (p, style, size = 5)->
 	g.beginPath()
@@ -192,81 +110,51 @@ drawPoint = (p, style, size = 5)->
 	g.arc(p.x, p.y, size, 0, TAU)
 	g.fill()
 
-drawRecent = ()->
-	g.beginPath()
-	g.strokeStyle = "#FFF"
-	g.moveTo(current.x, current.y)
-	g.lineTo(p.x,p.y) for p in recent
-	g.stroke()
-
-drawRecentBounds = ()->
-
-	g.beginPath()
-	g.strokeStyle = "#F00"
-	g.strokeRect(recentMin.x, recentMin.y, recentSize.x, recentSize.y)
-
-drawRecentAngle = ()->
-	g.beginPath()
-	g.strokeStyle = "#07F"
-
-	angle = recent.mapPairs(Vec.angle).map((ang)-> Angle.wrap(ang, recentAngleBasis)).average()
-	recentAngleBasis = angle # save for the future
-
-	sx = current.x
-	sy = current.y
-	dx = sx + Math.cos(angle) * 50
-	dy = sy + Math.sin(angle) * 50
-	g.moveTo(sx, sy)
-	g.lineTo(dx, dy)
-	g.stroke()
-
 drawComputedValue = ()->
 	angle = computedValue * TAU
 	loops = Math.floor(Math.abs(angle) / TAU)
 	isNeg = angle < 0
 
-	g.fillStyle = if isNeg then "rgba(255,0,0,0.2)" else "rgba(0,0,255,0.2)"
+	g.fillStyle = if isNeg then "#f004" else "#00f4"
 
 	r = 20
 
+	# Draw a circle for each full turn
 	for i in [0..loops]
 		g.beginPath()
 		g.arc(center.x, center.y, r * i, 0, TAU)
 		g.lineTo(center.x, center.y)
 		g.fill()
 
+	# Draw a wedge for the progress through the final turn
 	offset = -TAU/4
 	angle %= TAU
-
 	g.beginPath()
 	g.arc(center.x, center.y, r * (loops+1), offset, angle+offset, isNeg)
 	g.lineTo(center.x, center.y)
 	g.fill()
 
-hudValue = (value, label)->
-	pos = hud.nextPos()
-	g.fillStyle = "#F70"
-	g.fillText(Math.round(value*100)/100, hud.left - 20, hud.top + hud.space * pos)
-	g.fillStyle = "#FFF"
-	g.fillText(label, hud.left + hud.labelLeft, hud.top + hud.space * pos)
+# BEGIN
 
-hudPoint = (point, label, aScale = 1)->
-	hudValue(point.x, "X " + label)
-	hudValue(point.y, "Y " + label)
-	hudValue(point.a * aScale, "A " + label)
+window.onpointerdown = (e)->
+	time = 0
+	recent = []
+	usage = newPoint()
+	activeCenter = center
+	last = newPoint e.pageX, e.pageY
+	last.a = Vec.angle activeCenter, last
+	window.onpointermove = move
+	window.onpointerup = stop
 
-draw = ()->
-	prepareToDraw()
+move = (e)->
+	newPos = newPoint e.pageX, e.pageY
+	newPos.a = Vec.angle activeCenter, newPos
+	update newPos
 
-	drawComputedValue()
-	drawPoint(center, "#0F9")
-	# drawPoint(start, "#F70")
-	drawPoint(activeCenter, "#F00", 2)
-	drawRecent()
-	drawRecentBounds()
+stop = (e)->
+	window.onpointermove = null
+	window.onpointerup = null
 
-	hudValue(computedValue, "Computed Value")
-	hudValue(squareness, "Squareness")
-	hudPoint(accumulated, "Accumulated", DEG)
-	hudPoint(usage, "Usage")
-	hudPoint(delta, "Delta", DEG)
+window.onresize = resize
+
+resize() # Also calls draw()
